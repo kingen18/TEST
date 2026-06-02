@@ -196,66 +196,37 @@ function generateHTML(result, username) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const username = args.find((_, i) => i === 0 && !args[i].startsWith("--")) || process.env.JWGL_USER || "";
-  const password = args.find((_, i) => i === 1 && !args[i].startsWith("--")) || process.env.JWGL_PASS || "";
-  const daemon = args.includes("--daemon");
+  const username = args[0] || process.env.JWGL_USER || "";
+  const password = args[1] || process.env.JWGL_PASS || "";
 
   if (!username || !password) {
-    console.log("用法: node crawler.js <学号> <密码> [--daemon]");
-    console.log("  --daemon  每小时自动更新");
+    console.log("用法: node crawler.js <学号> <密码>");
+    console.log("定时运行: 右键 setup-scheduler.ps1 → 使用PowerShell运行");
     process.exit(1);
   }
 
-  async function runOnce() {
-    const client = createClient();
-    await login(client, username, password);
-    const resp = await client.get(CONFIG.kbPath, {
-      headers: { Referer: CONFIG.baseURL + "/jsxsd/framework/xsMain.jsp" },
-      params: { rq: CONFIG.getDateParam() },
-    });
-    const html = typeof resp.data === "string" ? resp.data : String(resp.data);
-    fs.mkdirSync("work", { recursive: true });
-    fs.writeFileSync("work/kb_raw.html", html, "utf-8");
-    return parseKbTable(html);
-  }
+  console.log("=".repeat(48));
+  console.log("  HBUST 本周课表爬虫");
+  console.log("=".repeat(48));
+  console.log("[*] 学号: " + username);
 
-  if (daemon) {
-    console.log("=".repeat(48));
-    console.log("  HBUST 课表 | 自动更新 (每小时)");
-    console.log("=".repeat(48));
-    console.log("[*] 学号: " + username + " | Ctrl+C 停止\n");
+  const client = createClient();
+  await login(client, username, password);
 
-    const tick = async () => {
-      const t = new Date().toLocaleTimeString("zh-CN");
-      try {
-        process.stdout.write("[" + t + "] 更新中...");
-        const result = await runOnce();
-        fs.mkdirSync("outputs", { recursive: true });
-        fs.writeFileSync("outputs/courses.json", JSON.stringify(result, null, 2), "utf-8");
-        fs.writeFileSync("outputs/schedule.html", generateHTML(result, username), "utf-8");
-        console.log(" ✅ " + result.count + "门 → outputs/schedule.html");
-      } catch (err) {
-        console.log(" ❌ " + err.message);
-      }
-    };
+  const resp = await client.get(CONFIG.kbPath, {
+    headers: { Referer: CONFIG.baseURL + "/jsxsd/framework/xsMain.jsp" },
+    params: { rq: CONFIG.getDateParam() },
+  });
+  const html = typeof resp.data === "string" ? resp.data : String(resp.data);
 
-    await tick();
-    setInterval(tick, 60 * 60 * 1000);
-  } else {
-    console.log("=".repeat(48));
-    console.log("  HBUST 本周课表爬虫");
-    console.log("=".repeat(48));
-    console.log("[*] 学号: " + username);
+  const result = parseKbTable(html);
+  console.log("[+] 登录成功, 抓取完成");
+  printCourses(result);
 
-    const result = await runOnce();
-    console.log("[+] 登录成功, 抓取完成");
-    printCourses(result);
-
-    fs.mkdirSync("outputs", { recursive: true });
-    fs.writeFileSync("outputs/courses.json", JSON.stringify(result, null, 2), "utf-8");
-    fs.writeFileSync("outputs/schedule.html", generateHTML(result, username), "utf-8");
-    console.log("\n[+] outputs/schedule.html");
-  }
+  fs.mkdirSync("outputs", { recursive: true });
+  fs.writeFileSync("outputs/courses.json", JSON.stringify(result, null, 2), "utf-8");
+  fs.writeFileSync("outputs/schedule.html", generateHTML(result, username), "utf-8");
+  console.log("\n[+] outputs/schedule.html");
 }
 
 main().catch(err => { console.error("[-] " + err.message); process.exit(1); });
